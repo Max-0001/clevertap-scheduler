@@ -12,6 +12,7 @@ so they're never exposed in the page or in your GitHub repo.
 """
 
 import json
+import os
 from datetime import date, datetime
 from datetime import time as dtime
 
@@ -152,10 +153,23 @@ def to_time_obj(time_str: str):
 # --------------------------------------------------------------------------
 
 def load_accounts() -> dict:
+    # Works on Streamlit Community Cloud (secrets set via their Secrets UI)
     try:
-        return {k: dict(v) for k, v in st.secrets["accounts"].items()}
+        accounts = {k: dict(v) for k, v in st.secrets["accounts"].items()}
+        if accounts:
+            return accounts
     except Exception:
-        return {}
+        pass
+    # Works on Hugging Face Spaces / Render / anywhere else: set ONE secret
+    # named CLEVERTAP_ACCOUNTS_JSON containing a JSON object, e.g.
+    # {"BrandA": {"account_id": "...", "passcode": "...", "region": "eu1"}}
+    raw = os.environ.get("CLEVERTAP_ACCOUNTS_JSON")
+    if raw:
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            st.error("CLEVERTAP_ACCOUNTS_JSON is not valid JSON — check for typos/missing commas.")
+    return {}
 
 
 # --------------------------------------------------------------------------

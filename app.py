@@ -49,18 +49,22 @@ def post_campaign(account_id: str, passcode: str, region: str, payload: dict) ->
     return data
 
 
-def build_push_content(title: str, body: str, buttons: list, image_url: str) -> dict:
+def build_push_content(title: str, body: str, buttons: list, image_url: str, notification_channel: str = "") -> dict:
     content: dict = {"title": title, "body": body}
     if buttons:
         content["wzrk_acts"] = [
-            {"l": b["label"], "dl": b["url"], "id": f"btn{i + 1}"}
+            {"l": b["label"], "dl": b["url"], "id": b.get("id", f"btn{i + 1}")}
             for i, b in enumerate(buttons)
         ]
     if image_url:
-        content["background_image"] = image_url  # Android
-        ios = content.setdefault("platform_specific", {}).setdefault("ios", {})
+        ps = content.setdefault("platform_specific", {})
+        ps.setdefault("android", {})["background_image"] = image_url
+        ios = ps.setdefault("ios", {})
         ios["mutable-content"] = "true"
         ios["ct_mediaUrl"] = image_url
+    if notification_channel:
+        ps = content.setdefault("platform_specific", {})
+        ps.setdefault("android", {})["wzrk_cid"] = notification_channel
     return content
 
 
@@ -220,16 +224,25 @@ for i in range(max_buttons):
         label = st.text_input("Label", key=f"btn_label_{i}", placeholder="e.g. Predict Now")
         url = st.text_input("URL", key=f"btn_url_{i}", placeholder="https://...")
         icon = ""
+        action_id = ""
         if is_webpush:
             icon = st.text_input(
                 "Icon URL (recommended — Chrome may not show the button without one)",
                 key=f"btn_icon_{i}",
                 placeholder="https://.../icon.png",
             )
+        else:
+            action_id = st.text_input(
+                "Action ID (optional — auto-generated if left blank)",
+                key=f"btn_id_{i}",
+                placeholder=f"btn{i + 1}",
+            )
         if label and url:
             b = {"label": label, "url": url}
             if icon:
                 b["icon"] = icon
+            if action_id:
+                b["id"] = action_id
             buttons.append(b)
 
 st.subheader("Media")
@@ -239,12 +252,22 @@ image_url = st.text_input(
 )
 deep_link = ""
 notif_icon = ""
+notification_channel = ""
 if is_webpush:
     default_deep_link = buttons[0]["url"] if buttons else ""
     deep_link = st.text_input(
         "Deep link (required — Safari mandates this)", value=default_deep_link
     )
     notif_icon = st.text_input("Notification icon URL (optional)")
+elif image_url:
+    notification_channel = st.text_input(
+        "Android Notification Channel ID",
+        help=(
+            "Required by Android 8+ when sending an image. Find your app's channel "
+            "ID in CleverTap dashboard -> new campaign -> Android Settings -> "
+            "Notification channel dropdown."
+        ),
+    )
 
 st.subheader("Schedule")
 send_mode = st.radio("When should this be sent?", ["Send now", "Schedule for later"], horizontal=True)
@@ -290,7 +313,7 @@ if estimate_clicked or send_clicked:
         target_mode = "webpush"
         extra: dict = {}
     else:
-        content = build_push_content(title, body, buttons, image_url)
+        content = build_push_content(title, body, buttons, image_url, notification_channel)
         target_mode = "push"
         extra = {"devices": ["ios", "android"]}
 
